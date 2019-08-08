@@ -221,8 +221,7 @@ class GatewayResourceHandler(APIHandler):
     @web.authenticated
     @gen.coroutine
     def get(self, kernel_name, path, include_body=True):
-        ksm = self.kernel_spec_manager
-        kernel_spec_res = yield ksm.get_kernel_spec_resource(kernel_name, path)
+        kernel_spec_res = yield self.kernel_finder.get_kernel_spec_resource(kernel_name, path)
         if kernel_spec_res is None:
             self.log.warning("Kernelspec resource '{}' for '{}' not found.  Gateway may not support"
                              " resource serving.".format(path, kernel_name))

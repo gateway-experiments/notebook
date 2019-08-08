@@ -80,10 +80,7 @@ class KernelActionHandler(APIHandler):
     def post(self, kernel_id, action):
         km = self.kernel_manager
         if action == 'interrupt':
-            kernel = km.get_kernel(kernel_id)
-            # Don't interrupt a kernel while it's still starting
-            yield kernel.client_ready()
-            kernel.interrupt()
+            km.interrupt_kernel(kernel_id)
             self.set_status(204)
         if action == 'restart':
 

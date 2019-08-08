@@ -433,6 +433,19 @@ class MappingKernelManager(LoggingConfigurable):
             ).dec()
             raise gen.TimeoutError("Timeout waiting for restart")
 
+    @gen.coroutine
+    def interrupt_kernel(self, kernel_id):
+        """Interrupt a kernel by kernel_id
+
+        The restarted kernel keeps the same ID and KernelInterface object.
+        """
+        self._check_kernel_id(kernel_id)
+        kernel = self.get_kernel(kernel_id)
+
+        # Don't interrupt a kernel while it's still starting
+        yield kernel.client_ready()
+        kernel.interrupt()
+
     def notify_connect(self, kernel_id):
         """Notice a new connection to a kernel"""
         if kernel_id in self._kernels:

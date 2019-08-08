@@ -168,7 +168,7 @@ class TestGateway(NotebookTestBase):
         # Ensure appropriate class mappings are in place.
         nt.assert_equal(self.notebook.kernel_manager_class.__name__, 'GatewayKernelManager')
         nt.assert_equal(self.notebook.session_manager_class.__name__, 'GatewaySessionManager')
-        nt.assert_equal(self.notebook.kernel_spec_manager_class.__name__, 'GatewayKernelSpecManager')
+        nt.assert_equal(self.notebook.kernel_finder.__class__.__name__, 'GatewayKernelFinder')
 
     def test_gateway_get_kernelspecs(self):
         # Validate that kernelspecs come from gateway.

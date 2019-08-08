@@ -84,7 +84,7 @@ from .services.contents.manager import ContentsManager
 from .services.contents.filemanager import FileContentsManager
 from .services.contents.largefilemanager import LargeFileManager
 from .services.sessions.sessionmanager import SessionManager
-from .gateway.managers import GatewayKernelManager, GatewayKernelSpecManager, GatewaySessionManager, GatewayClient
+from .gateway.managers import GatewayKernelManager, GatewayKernelFinder, GatewaySessionManager, GatewayClient
 
 from .auth.login import LoginHandler
 from .auth.logout import LogoutHandler
@@ -581,7 +581,7 @@ class NotebookApp(JupyterApp):
     classes = [
         KernelManager, Session, MappingKernelManager,
         ContentsManager, FileContentsManager, NotebookNotary,
-        GatewayKernelManager, GatewayKernelSpecManager, GatewaySessionManager, GatewayClient,
+        GatewayKernelManager, GatewayKernelFinder, GatewaySessionManager, GatewayClient,
     ]
     flags = Dict(flags)
     aliases = Dict(aliases)
@@ -1328,19 +1328,15 @@ class NotebookApp(JupyterApp):
         self.gateway_config = GatewayClient.instance(parent=self)
 
         if self.gateway_config.gateway_enabled:
-            self.kernel_manager_class = 'notebook.gateway.managers.GatewayKernelManager'
-            self.session_manager_class = 'notebook.gateway.managers.GatewaySessionManager'
-# FIXME - no more kernel-spec-manager!
-#            self.kernel_spec_manager_class = 'notebook.gateway.managers.GatewayKernelSpecManager'
-#
-#        self.kernel_spec_manager = self.kernel_spec_manager_class(
-#            parent=self,
-#        )
-
-        if self.kernel_providers:
-            self.kernel_finder = KernelFinder(self.kernel_providers)
+            self.kernel_manager_class = GatewayKernelManager
+            self.session_manager_class = GatewaySessionManager
+            # Since finder is not user-overridable, we'll point to our internal instance that performs redirection.
+            self.kernel_finder = GatewayKernelFinder(providers=[])
         else:
-            self.kernel_finder = KernelFinder.from_entrypoints()
+            if self.kernel_providers:
+                self.kernel_finder = KernelFinder(providers=self.kernel_providers)
+            else:
+                self.kernel_finder = KernelFinder.from_entrypoints()
 
         self.kernel_manager = self.kernel_manager_class(
             parent=self,

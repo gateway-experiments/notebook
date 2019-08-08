@@ -12,11 +12,12 @@ from tornado.httpclient import HTTPClient, AsyncHTTPClient, HTTPError
 from ..services.kernels.kernelmanager import MappingKernelManager
 from ..services.sessions.sessionmanager import SessionManager
 
-from jupyter_client.kernelspec import KernelSpecManager
+from jupyter_kernel_mgmt.discovery import KernelFinder
 from ..utils import url_path_join
 
 from traitlets import Instance, Unicode, Float, Bool, default, validate, TraitError
-from traitlets.config import SingletonConfigurable
+from traitlets.log import get_logger as get_app_logger
+from traitlets.config import SingletonConfigurable, Application
 
 
 class GatewayClient(SingletonConfigurable):
@@ -496,14 +497,16 @@ class GatewayKernelManager(MappingKernelManager):
             self.remove_kernel(kernel_id)
 
 
-class GatewayKernelSpecManager(KernelSpecManager):
+class GatewayKernelFinder(KernelFinder):
 
-    def __init__(self, **kwargs):
-        super(GatewayKernelSpecManager, self).__init__(**kwargs)
+    def __init__(self, providers):
+        super(GatewayKernelFinder, self).__init__(providers)
         self.base_endpoint = url_path_join(GatewayClient.instance().url,
                                            GatewayClient.instance().kernelspecs_endpoint)
         self.base_resource_endpoint = url_path_join(GatewayClient.instance().url,
                                                     GatewayClient.instance().kernelspecs_resource_endpoint)
+        self.log = get_app_logger()
+
 
     def _get_kernelspecs_endpoint_url(self, kernel_name=None):
         """Builds a url for the kernels endpoint
@@ -518,14 +521,17 @@ class GatewayKernelSpecManager(KernelSpecManager):
         return self.base_endpoint
 
     @gen.coroutine
-    def get_all_specs(self):
-        fetched_kspecs = yield self.list_kernel_specs()
+    def find_kernels(self):
+        """Iterate over available kernel types.
 
-        # get the default kernel name and compare to that of this server.
-        # If different log a warning and reset the default.  However, the
-        # caller of this method will still return this server's value until
-        # the next fetch of kernelspecs - at which time they'll match.
-        km = self.parent.kernel_manager
+        Yields 2-tuples of (prefixed_name, attributes)
+        """
+        kernel_spec_url = self._get_kernelspecs_endpoint_url()
+        self.log.debug("Request list kernel specs at: %s", kernel_spec_url)
+        response = yield gateway_request(kernel_spec_url, method='GET')
+        fetched_kspecs = json_decode(response.body)
+
+        km = GatewayClient.instance().parent.kernel_manager  # reach up into parent app to access kernel manager
         remote_default_kernel_name = fetched_kspecs.get('default')
         if remote_default_kernel_name != km.default_kernel_name:
             self.log.info("Default kernel name on Gateway server ({gateway_default}) differs from "
@@ -534,43 +540,10 @@ class GatewayKernelSpecManager(KernelSpecManager):
                                  notebook_default=km.default_kernel_name))
             km.default_kernel_name = remote_default_kernel_name
 
-        remote_kspecs = fetched_kspecs.get('kernelspecs')
-        raise gen.Return(remote_kspecs)
+        kernel_specs = fetched_kspecs.get('kernelspecs')
 
-    @gen.coroutine
-    def list_kernel_specs(self):
-        """Get a list of kernel specs."""
-        kernel_spec_url = self._get_kernelspecs_endpoint_url()
-        self.log.debug("Request list kernel specs at: %s", kernel_spec_url)
-        response = yield gateway_request(kernel_spec_url, method='GET')
-        kernel_specs = json_decode(response.body)
-        raise gen.Return(kernel_specs)
-
-    @gen.coroutine
-    def get_kernel_spec(self, kernel_name, **kwargs):
-        """Get kernel spec for kernel_name.
-
-        Parameters
-        ----------
-        kernel_name : str
-            The name of the kernel.
-        """
-        kernel_spec_url = self._get_kernelspecs_endpoint_url(kernel_name=str(kernel_name))
-        self.log.debug("Request kernel spec at: %s" % kernel_spec_url)
-        try:
-            response = yield gateway_request(kernel_spec_url, method='GET')
-        except HTTPError as error:
-            if error.code == 404:
-                # Convert not found to KeyError since that's what the Notebook handler expects
-                # message is not used, but might as well make it useful for troubleshooting
-                raise KeyError('kernelspec {kernel_name} not found on Gateway server at: {gateway_url}'.
-                               format(kernel_name=kernel_name, gateway_url=GatewayClient.instance().url))
-            else:
-                raise
-        else:
-            kernel_spec = json_decode(response.body)
-
-        raise gen.Return(kernel_spec)
+        kspecs = [(k, v) for k, v in kernel_specs.items()]
+        raise gen.Return(kspecs)
 
     @gen.coroutine
     def get_kernel_spec_resource(self, kernel_name, path):
